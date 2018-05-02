@@ -4,7 +4,7 @@ clc;clear all;close all;
 faceDetector = vision.CascadeObjectDetector();
 
 % Read a video frame and run the face detector.
-video           = '2.mov';
+video           = '1.mov';
 videoFileReader = vision.VideoFileReader(video);
 file            = VideoReader(video);
 videoFrame      = step(videoFileReader);
@@ -94,11 +94,15 @@ for i = 1:NoF
     columns = round(bboxPolygon(1,1):bboxPolygon(1,3));
     
     frame = readFrame(file);
-    green = squeeze(videoFrame(rows,columns,2));
-    green_average(i) = mean(mean(green));
-%     green_average(i) = mean(mean(frame(y_top:y_bottom,x_left:x_right,2)));
-    
+    green_1 = 255*squeeze(videoFrame(rows,columns,2));
+    green_average_1(i) = mean(mean(green_1));
+    green_2 = squeeze(frame(rows,columns,2));
+    green_average_2(i) = mean(mean(green_2));
+    green_average_3(i) = 255*mean(mean(videoFrame(y_top:y_bottom,x_left:x_right,2)));
+    green_average_4(i) = mean(mean(frame(y_top:y_bottom,x_left:x_right,2)));
 end
+
+green_average = mean(cat(1,green_average_1,green_average_2,green_average_3,green_average_4));
 
 % Clean up
 release(videoFileReader);
@@ -127,16 +131,12 @@ grid on;
 title('Filtered Green Average Channel');
 
 % FFT
-window = 6;
+window = 10;
 T_sample = round(fps * 0.1);
 num_samples = round(window * fps);
 num_bpm_samples = floor((size(signal,2) - num_samples)/T_sample);
 bpm = [];
 padding = round(fps * (60 - window));
-
-max_amp = 0;
-min_bpm = 40;
-max_bpm = 120;
 
 figure;
 for i = 1:num_bpm_samples
@@ -162,11 +162,17 @@ for i = 1:num_bpm_samples
     bpm(i) = (max_index-1) * (60*fps/size(signal_padded,2));
     
     stem((bounds-1) * (fps/size(signal_DFT, 2)) * 60, signal_DFT(bounds));
+    title('Frequency Analysis');
+    ylabel('Amplitude');
+    xlabel('Heart Rate (bpm)');
+    legend('FFT Signal');
+    grid on;
     pause(0.1);
 end
 
 % Plotting BPM graph
 time = (0:i-1) * ((size(signal,2)/fps) / (num_bpm_samples-1));
+average_bpm = mean(bpm);
 
 figure;
 plot(time, bpm, 'r','LineWidth', 1.5);
@@ -174,4 +180,5 @@ title('Heartrate');
 xlabel('Time (s)');
 ylabel('Beats per Minute (bpm)');
 ylim([40 120]);
+legend(sprintf('Average Heartrate : %0.1f bpm',average_bpm));
 grid on;
