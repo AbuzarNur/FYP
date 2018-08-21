@@ -1,35 +1,36 @@
+'''
+Abuzar Nur - Nihal Noor - FYP 2018 - Final Batch
+'''
+
+# Import all neccssary libraries
 import cv2
 import numpy as np
 from scipy.signal import butter, lfilter, find_peaks
 import matplotlib.pyplot as plt
 from operator import itemgetter
 
-'''
-Abuzar Nur - FYP 2018 - Final Batch
-'''
-
-green_average = list()
+# Empty variables
+signal_average = list()
 frames = 0
 
+# Importing video file
 vid = 'old3.mov'
 cap = cv2.VideoCapture(vid)
 NoF = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 # print(NoF)
 # fps = int(cap.get(cv2.CAP_PROP_FPS))
 
-# Create the haar cascade
-faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml") #high accuracy/slow
+# Create the haar cascade to detect face
+faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
 
 while(True):
-	# Capture frame-by-frame
-	ret, frame = cap.read()
+	ret, frame = cap.read() #ret = T/F if frame is received, frame = individual frame
 	if ret:
 		frames = frames + 1
 		print(str(frames) + " out of " + str(NoF))
 		# Our operations on the frame come here
-		gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-
+		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 		# Detect faces in the image
 		faces = faceCascade.detectMultiScale(
 			gray,
@@ -39,8 +40,9 @@ while(True):
 			flags = cv2.CASCADE_SCALE_IMAGE
 		)
 
-		area = list()
+		area = list() #creating empty list for now
 
+		# make sure only the largest face in the frame is used
 		if np.ndim(faces) > 1:
 			for (x, y, w, h) in faces:
 				area.append(w*h)
@@ -53,6 +55,7 @@ while(True):
 			print(faces)
 			face = faces[0]
 
+		# scaling the detected face into forehead
 		x_scale = 0.23
 		x_centre = round(face[0] + face[2] / 2)
 		x_left = round(x_centre - face[2] * x_scale)
@@ -64,15 +67,26 @@ while(True):
 		y_top = round(y_centre - face[2] * y_scale)
 		y_bottom = round(y_centre + face[2] * y_scale)
 
+		# creating ROI with parameters {x, y, w, h}
 		ROI = [[int(x_left), int(y_top), int(x_right - x_left), int(y_bottom - y_top)]]
 
 		# Draw a rectangle around the faces
 		for (x, y, w, h) in ROI:
 			cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
+			# capturing indiviudal rgb values from the ROI
+			red = frame[y:y+h, x:x+w, 0]
 			green = frame[y:y+h, x:x+w, 1]
+			blue = frame[y:y+h, x:x+w, 2]
 
-		green_average.append(np.mean(green))
+		# creating an average of the rgb channels
+		red_average = np.mean(red)
+		green_average = np.mean(green)
+		blue_average = np.mean(blue)
+
+		rgb = np.concatenate((red_average,green_average), axis=None) # putting together all the wanted channels
+
+		signal_average.append(np.mean(rgb)) # using the average of rgb channels and creating a signal vector
 
 		# Display the resulting frame
 		# cv2.imshow("frame", frame)
@@ -91,7 +105,7 @@ frames_range = np.arange(0, frames, 1)
 
 print("Plotting Green Channel")
 plt.figure(1)
-plt.plot(frames_range, green_average)
+plt.plot(frames_range, signal_average)
 plt.title("Raw Green Channel")
 plt.savefig("Plots/green_raw.png")
 
@@ -101,17 +115,19 @@ print("Creating Filter")
 fps = 30
 bpm_range = [40/60, 200/60]
 
-[b, a] = butter(2, [2*bpm_range[0]/fps, 2*bpm_range[1]/fps], btype = 'band')
-green_filtered = lfilter(b, a, green_average)
+[b, a] = butter(2, [2*bpm_range[0]/fps, 2*bpm_range[1]/fps], btype = 'band') #creating butterworth filter coefficients
+signal_filtered = lfilter(b, a, signal_average) # applying buterworth filter onto signal
 
 print("Plotting Filtered Channel")
 plt.figure(2)
-plt.plot(frames_range, green_filtered)
+plt.plot(frames_range, signal_filtered)
 plt.title("Filtered Green Channel")
 plt.savefig("Plots/green_filtered.png")
 
-signal = green_filtered[5*fps+1:np.size(green_filtered)]
-signal_range = np.arange(5*fps+1, frames, 1)
+# cutting off initial frames where signal has not settled
+offset = 5
+signal = signal_filtered[offset*fps+1:np.size(signal_filtered)]
+signal_range = np.arange(offset*fps+1, frames, 1)
 
 print("Plotting Signal")
 plt.figure(3)
@@ -121,43 +137,46 @@ plt.savefig("Plots/green_signal.png")
 
 print("Fourier Transforming")
 
-window = 10
-T_sample = round(fps * 0.1)
+
+window = 10 # window size
+T_sample = round(fps * 0.1) # sample period
 num_samples = round(window * fps)
 num_bpm_samples = np.floor((np.size(signal) - num_samples)/T_sample)
 bpm = list()
 count = 0
-padding = round(fps * (60 - window))
+padding = round(fps * (60 - window)) # length of padding
 
-# print(num_samples)
 for i in range(1, int(num_bpm_samples)-1,1):
-	start = (i-1)*T_sample + 1
-	signal_cutoff = signal[start : start+num_samples]
+	start = (i-1)*T_sample + 1 # starting value of sliding window
+	signal_cutoff = signal[start : (start+num_samples)] # sliding window range
 
-	signal_hann = np.multiply(signal_cutoff, np.hanning(np.size(signal_cutoff)))
-	signal_DFT = np.abs(np.fft.fft(signal_hann))
-	signal_padded = np.abs(np.fft.fft(np.pad(signal_hann, (0, padding), 'constant', constant_values=(0,0))))
+	signal_hann = np.multiply(signal_cutoff, np.hanning(np.size(signal_cutoff))) # smoothing the window out
+	signal_DFT = np.abs(np.fft.fft(signal_hann)) # retrieving the absoloute value of the fft of the smoothed signal window
+	signal_padded = np.abs(np.fft.fft(np.pad(signal_hann, (0, padding), 'constant', constant_values=(0,0)))) # applying post-padding
 
-	lower_padded = int(np.floor(bpm_range[0] * (np.size(signal_padded)/fps)) + 1)
-	upper_padded = int(np.ceil(bpm_range[1] * (np.size(signal_padded)/fps)) + 1)
-	bounds_padded = range(lower_padded,upper_padded,1)
+	lower_padded = int(np.floor(bpm_range[0] * (np.size(signal_padded)/fps)) + 1) # lower bound
+	upper_padded = int(np.ceil(bpm_range[1] * (np.size(signal_padded)/fps)) + 1) # upper bound
+	bounds_padded = range(lower_padded,upper_padded,1) # range of bounded signal
 
-	signal_padded_bounded = signal_padded[lower_padded:upper_padded]
+	signal_padded_bounded = signal_padded[lower_padded:upper_padded] # restricting the padded signal
 
-	location, _ = find_peaks(signal_padded_bounded)
-	peak = itemgetter(location)(signal_padded_bounded)
+	location, _ = find_peaks(signal_padded_bounded) # provides an index
+	peak = itemgetter(location)(signal_padded_bounded) #uses the index to get the indexed value
 	peak_max = round(max(peak), 5)
 	peak_rounded = [round(i, 5) for i in peak]
-	peak_location = peak_rounded.index(peak_max)
-	peak_index = bounds_padded[location[peak_location]]
+	peak_location = peak_rounded.index(peak_max) #find the index where the matching value exists
+	peak_index = bounds_padded[location[peak_location]] #at the index
 
+	peak_location_2 = np.argmax(signal_padded_bounded) # finds the max value in the window and returns the index
+	peak_index_2 = bounds_padded[int(peak_location_2)] # uses the index to return the bounded frequency
 
-	bpm.append((peak_index - 1) * (60 * fps / np.size(signal_padded)))
+	bpm.append((peak_index_2 - 1) * (60 * fps / np.size(signal_padded))) # appending the latest bpm value to the vector
 	count = count + 1
 	print(str(count) + " out of " + str(num_bpm_samples))
 
 print("Creating BPM plot")
-time = np.multiply((range(0, count)), ((np.size(signal)/fps)/(num_bpm_samples-1)))
+time = np.multiply((range(0, count)), ((np.size(signal)/fps)/(num_bpm_samples-1))) # creating a time vector
+
 average_bpm = np.mean(bpm)
 print(average_bpm)
 
