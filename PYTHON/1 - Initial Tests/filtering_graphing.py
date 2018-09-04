@@ -11,13 +11,15 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
 from operator import itemgetter
+import warnings
+warnings.filterwarnings(action="ignore", module="scipy", message="^internal gelsd")
 
 # Empty variables
 signal_average = list()
 frames = 0
 
 # Importing video file
-vid = 'vid4.mpg'
+vid = 'Shane1.avi'
 
 try:
 	signal_average = list(np.load("{}_signal_average.npy".format(vid)))
