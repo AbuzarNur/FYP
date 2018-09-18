@@ -117,29 +117,55 @@ class findFaceGetPulse(object):
             if self.shift(detected[-1]) > 2:
                 self.face_rect = detected[-1]
 
-        forehead = self.get_subface_coord(0.5, 0.15, 0.25, 0.15)
+        forehead = self.get_subface_coord(0.5, 0.18, 0.25, 0.15)
         self.draw_rect(forehead)
         x, y, w, h = forehead
 
-        # cv2.putText(self.frame_out, "Press 'C' to change camera (current: %s)" % str(cam),(10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
+        cv2.putText(self.frame_out, "Press 'C' to change camera (current: %s)" % str(cam),(10, 25), cv2.FONT_HERSHEY_PLAIN, 1.25, col)
         cv2.putText(self.frame_out, "Press 'S' to restart",(10, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
-        # cv2.putText(self.frame_out, "Press 'D' to toggle data plot",(10, 75), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
+        cv2.putText(self.frame_out, "Press 'D' to toggle data plot",(10, 75), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
         # cv2.putText(self.frame_out, "Press 'F' to save csv", (10, 100), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
         cv2.putText(self.frame_out, "Press 'Esc' to quit",(10, 125), cv2.FONT_HERSHEY_PLAIN, 1.5, col)
 
         vals = self.get_subface_means(forehead)
 ###########
+        self.data_buffer.append(vals)
+        L = len(self.data_buffer)
+        if L > self.buffer_size:
+            self.data_buffer = self.data_buffer[-self.buffer_size:]
+            self.times = self.times[-self.buffer_size:]
+            L = self.buffer_size
 
+        processed = np.array(self.data_buffer)
+        self.samples = processed
+        if L > 10:
+            self.output_dim = processed.shape[0]
 
+            self.fps = float(L) / (self.times[-1] - self.times[0])
+            # print(self.fps)
+            even_times = np.linspace(self.times[0], self.times[-1], L)
+            interpolated = np.interp(even_times, self.times, processed)
+            interpolated = np.hamming(L) * interpolated
+            interpolated = interpolated - np.mean(interpolated)
 
+            self.fft = np.abs(np.fft.rfft(interpolated))
+            self.freqs = float(self.fps) / L * np.arange(L / 2 + 1)
 
+            freqs = 60. * self.freqs
+            idx = np.where((freqs > 50) & (freqs < 180))
 
+            self.freqs = freqs[idx]
 
+            self.fft = self.fft[idx]
+            idx_max = np.argmax(self.fft)
 
-        text = "(rgb: %0.1f )" % (vals)
+            self.bpm = self.freqs[idx_max]
 
-        cv2.putText(self.frame_out, text, (int(x - w / 2), int(y)), cv2.FONT_HERSHEY_PLAIN, 1, col)
+            gap = (self.buffer_size - L) / self.fps
 
+            if gap:
+                text = "(estimate: %0.1f bpm, wait %0.0f s)" % (self.bpm, gap)
+            else:
+                text = "(estimate: %0.1f bpm)" % (self.bpm)
 
-
-
+            cv2.putText(self.frame_out, text, (int(x - w / 2), int(y)), cv2.FONT_HERSHEY_PLAIN, 1, col)
